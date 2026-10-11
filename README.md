@@ -157,8 +157,6 @@ Tests use in-memory SQLite with the actual migrations and mocked external servic
 | `scripts/`                                | Deployment tools, encryption setup, command registration     |
 | `test/`                                   | Automated tests                                              |
 
-`Set-RobloxGameIcon.ps1` is a separate PowerShell 7 utility. It requires an explicit `-RootPlaceId`, an image path or asset ID, and `ROBLOX_API_KEY` in the environment. It verifies place metadata; the bot additionally verifies the public icon render.
-
 ### Existing installations
 
 The optional `ROBLOX_API_KEY`, `ALLOWED_UNIVERSE_IDS`, and `UNIVERSE_ROOT_PLACES` settings support importing the original single-game setup. Import is limited to the first allowed server. New installations can leave them empty and connect studios through the panel.
