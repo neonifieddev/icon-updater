@@ -26,9 +26,12 @@ function fixture(t) {
     ALLOWED_UNIVERSE_IDS: '1001',
     UNIVERSE_ROOT_PLACES: '{"1001":"2001"}',
   };
+
   t.after(() => env.DB.close());
+
   return env;
 }
+
 const interaction = (type, data, guild = 'guild', user = 'admin') => ({
   type,
   guild_id: guild,
@@ -48,16 +51,20 @@ const form = (custom_id, values, resolved) =>
     })),
     resolved,
   });
+
 async function start(env) {
   const original = globalThis.fetch;
   let page;
+
   try {
     globalThis.fetch = async () => Response.json({ data: [] });
     page = await executePanel(env, interaction(2, { name: 'panel' }));
   } finally {
     globalThis.fetch = original;
   }
+
   const id = page.components[0].components[0].custom_id.split(':')[1];
+
   return {
     page,
     id,
@@ -67,8 +74,10 @@ async function start(env) {
       }),
   };
 }
+
 test('one option-free command; original configuration imports only into its own server', async (t) => {
   const env = fixture(t);
+
   assert.equal(commandDefinitions[0].name, 'panel');
   assert.equal(commandDefinitions[0].options, undefined);
   await importExisting(env, 'other');
@@ -77,8 +86,10 @@ test('one option-free command; original configuration imports only into its own 
     0,
   );
   const { page } = await start(env);
+
   await importExisting(env, 'guild');
   const { results } = await env.DB.prepare('SELECT * FROM studios').all();
+
   assert.equal(results.length, 1);
   assert.ok(!results[0].encrypted_key.includes(env.ROBLOX_API_KEY));
   assert.ok(!JSON.stringify(page).includes(env.ROBLOX_API_KEY));
@@ -95,6 +106,7 @@ test('encryption is authenticated, randomized and bound to both studio and serve
   const env = fixture(t),
     key = 'studio-private-api-key-12345';
   const encrypted = await encryptKey(env, 'guild', 'studio', key);
+
   assert.notEqual(encrypted, await encryptKey(env, 'guild', 'studio', key));
   await env.DB.prepare('INSERT INTO studios VALUES (?,?,?,?,?)')
     .bind('studio', 'guild', 'A', encrypted, 0)
@@ -115,6 +127,7 @@ test('encryption is authenticated, randomized and bound to both studio and serve
 test('panel ownership, expiry and game lookup block forged cross-server actions', async (t) => {
   const env = fixture(t),
     { click } = await start(env);
+
   await assert.rejects(
     panelSession(env, { ...click('home'), guild_id: 'other' }),
     /expired/,
@@ -137,6 +150,7 @@ test('forms upload attachments without command options and keep game targets fix
   const env = fixture(t),
     { click, id } = await start(env);
   const modal = await openModal(env, click('update', 'original-1001'));
+
   assert.equal(modal.type, 9);
   assert.equal(modal.data.components[1].component.type, 19);
   assert.ok(modal.data.custom_id.length <= 100);
@@ -145,8 +159,10 @@ test('forms upload attachments without command options and keep game targets fix
     stage: ['24h'],
     image: ['attachment'],
   }).data;
+
   assert.deepEqual(modalValues(data), { stage: '24h', image: 'attachment' });
   const connect = await openModal(env, click('connect'));
+
   assert.equal(connect.data.components[1].component.value, undefined);
 });
 test('studio connect, replace and disconnect never echo keys; active schedules block disconnect', async (t) => {
@@ -157,10 +173,12 @@ test('studio connect, replace and disconnect never echo keys; active schedules b
     env,
     form(`p:${id}:save-connect`, { name: 'Second studio', key: secret }),
   );
+
   assert.ok(!JSON.stringify(result).includes(secret));
   const studio = await env.DB.prepare('SELECT * FROM studios WHERE name = ?')
     .bind('Second studio')
     .first();
+
   assert.equal(
     (await studioEnvironment(env, 'guild', studio.id)).ROBLOX_API_KEY,
     secret,
@@ -198,6 +216,7 @@ test('new game reads Roblox with selected studio key and scheduled job retains t
   const env = fixture(t),
     { id } = await start(env);
   const secret = 'studio-b-private-key-12345';
+
   await executePanel(
     env,
     form(`p:${id}:save-connect`, { name: 'B', key: secret }),
@@ -206,31 +225,40 @@ test('new game reads Roblox with selected studio key and scheduled job retains t
     "SELECT id FROM studios WHERE name = 'B'",
   ).first();
   const original = globalThis.fetch;
+
   t.after(() => {
     globalThis.fetch = original;
   });
+
   globalThis.fetch = async (url, init) => {
     url = String(url);
+
     if (url.includes('games.roblox.com')) {
       return Response.json({
         data: [{ id: 42, rootPlaceId: 84, name: 'Roblox Game B' }],
       });
     }
+
     if (url.includes('cdn.discordapp.com')) {
       return new Response('PNG');
     }
+
     assert.equal(init.headers['x-api-key'], secret);
+
     if (url.includes('readMask')) {
       return Response.json({ icon: 'assets/123' });
     }
+
     if (url.includes('game-icon')) {
       return Response.json({ data: [] });
     }
+
     return Response.json({
       assetType: 'Place',
       creationContext: { creator: { groupId: '7' } },
     });
   };
+
   await executePanel(
     env,
     form(`p:${id}:save-addgame`, {
@@ -242,6 +270,7 @@ test('new game reads Roblox with selected studio key and scheduled job retains t
   const game = await env.DB.prepare(
     "SELECT * FROM games WHERE universe_id = '42'",
   ).first();
+
   assert.equal(game.studio_id, studio.id);
   assert.equal(game.place_id, '84');
   await env.DB.prepare('INSERT INTO overlays VALUES (?,?,?,?)')
@@ -268,6 +297,7 @@ test('new game reads Roblox with selected studio key and scheduled job retains t
     ),
   );
   const schedule = await env.DB.prepare('SELECT * FROM schedules').first();
+
   assert.equal(schedule.studio_id, studio.id);
   assert.equal(schedule.creator_json, '{"groupId":"7"}');
   await env.DB.prepare(
@@ -282,11 +312,13 @@ test('signed button interactions open forms immediately, then defer navigation a
     'sign',
     'verify',
   ]);
+
   env.DISCORD_APPLICATION_ID = 'app';
   env.ALLOW_SERVER_ADMINS = 'true';
   env.DISCORD_PUBLIC_KEY = Buffer.from(
     await crypto.subtle.exportKey('raw', pair.publicKey),
   ).toString('hex');
+
   async function request(data) {
     const body = JSON.stringify({
       ...data,
@@ -302,6 +334,7 @@ test('signed button interactions open forms immediately, then defer navigation a
         new TextEncoder().encode(timestamp + body),
       ),
     ).toString('hex');
+
     return new Request('https://test/interactions', {
       method: 'POST',
       body,
@@ -311,12 +344,14 @@ test('signed button interactions open forms immediately, then defer navigation a
       },
     });
   }
+
   const tasks = [],
     ctx = {
       waitUntil(p) {
         tasks.push(p);
       },
     };
+
   assert.equal(
     (
       await (
@@ -327,14 +362,18 @@ test('signed button interactions open forms immediately, then defer navigation a
   );
   assert.equal(tasks.length, 0);
   const original = globalThis.fetch;
+
   t.after(() => {
     globalThis.fetch = original;
   });
   let payload;
+
   globalThis.fetch = async (_url, init) => {
     payload = JSON.parse(init.body);
+
     return Response.json({});
   };
+
   assert.equal(
     (await (await worker.fetch(await request(click('home')), env, ctx)).json())
       .type,

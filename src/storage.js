@@ -4,11 +4,14 @@
 export async function putFile(env, key, blob) {
   await env.FILES.put(key, blob.stream());
 }
+
 export async function getFile(env, key) {
   const stream = await env.FILES.get(key, { type: 'stream' });
+
   if (!stream) {
     return null;
   }
+
   return {
     body: stream,
     arrayBuffer: () => new Response(stream).arrayBuffer(),

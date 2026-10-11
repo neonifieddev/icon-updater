@@ -8,6 +8,7 @@ const args = process.argv.slice(2);
 const explicitConfig = args.some(
   (arg) => arg === '--config' || arg === '-c' || arg.startsWith('--config='),
 );
+
 if (!explicitConfig) {
   args.push(
     '--config',
@@ -20,7 +21,9 @@ const result = spawnSync(
   ['--use-system-ca', 'node_modules/wrangler/bin/wrangler.js', ...args],
   { cwd: root, stdio: 'inherit', windowsHide: true },
 );
+
 if (result.error) {
   throw result.error;
 }
+
 process.exitCode = result.status ?? 1;

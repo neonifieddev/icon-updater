@@ -27,30 +27,39 @@ import { getPlace } from './roblox.js';
 
 const validateStudioName = (value) => {
   const name = String(value || '').trim();
+
   if (!name || name.length > 60 || /[\r\n]/.test(name)) {
     throw new Error('Use a name between 1 and 60 characters.');
   }
+
   return name;
 };
 const display = (value) => String(value).replace(/[\\*_`~|<>[\]]/g, '');
+
 export function modalValues(data) {
   const values = {};
+
   function visit(component) {
     if (component.custom_id) {
       values[component.custom_id] = component.value ?? component.values?.[0];
     }
+
     if (component.component) {
       visit(component.component);
     }
+
     for (const child of component.components || []) {
       visit(child);
     }
   }
+
   for (const component of data.components || []) {
     visit(component);
   }
+
   return values;
 }
+
 export async function panelSession(env, interaction) {
   const [, id, action, target] = (interaction.data.custom_id || '').split(':');
   const session = await env.DB.prepare(
@@ -63,31 +72,39 @@ export async function panelSession(env, interaction) {
       Date.now(),
     )
     .first();
+
   if (!session) {
     throw new Error('This panel has expired. Open /panel again.');
   }
+
   return { session, action, target };
 }
+
 async function getGame(env, session, id) {
   const game = await env.DB.prepare(
     'SELECT * FROM games WHERE id = ? AND guild_id = ?',
   )
     .bind(id || '', session.guild_id)
     .first();
+
   if (!game) {
     throw new Error('Choose a saved game first.');
   }
+
   return game;
 }
+
 async function getStudio(env, session, id) {
   const studio = await env.DB.prepare(
     'SELECT id, name, encrypted_key FROM studios WHERE id = ? AND guild_id = ?',
   )
     .bind(id || '', session.guild_id)
     .first();
+
   if (!studio) {
     throw new Error('Choose a studio first.');
   }
+
   return studio;
 }
 // Panel views
@@ -100,6 +117,7 @@ export async function home(env, session, notice = '') {
     .all();
   const game = games.find((game) => game.id === session.game_id) || games[0];
   const components = [];
+
   if (game) {
     components.push(
       row(
@@ -133,6 +151,7 @@ export async function home(env, session, notice = '') {
       ),
     );
   }
+
   components.push(
     row(
       button(session, 'overlays', 'Overlays'),
@@ -140,6 +159,7 @@ export async function home(env, session, notice = '') {
       button(session, 'addgame', 'Add game'),
     ),
   );
+
   return {
     title: '🗺️ Updater',
     content: [
@@ -153,6 +173,7 @@ export async function home(env, session, notice = '') {
     components,
   };
 }
+
 async function studioPage(env, session, notice = '') {
   const { results } = await env.DB.prepare(
     'SELECT id, name, encrypted_key FROM studios WHERE guild_id = ? ORDER BY name',
@@ -162,6 +183,7 @@ async function studioPage(env, session, notice = '') {
   const studio =
     results.find((studio) => studio.id === session.studio_id) || results[0];
   const components = [];
+
   if (studio) {
     components.push(
       row(
@@ -199,12 +221,14 @@ async function studioPage(env, session, notice = '') {
       ),
     );
   }
+
   components.push(
     row(
       button(session, 'connect', 'Connect studio', '', 1, results.length >= 10),
       button(session, 'home', 'Back'),
     ),
   );
+
   return {
     title: '🏢 Studios',
     content: [
@@ -219,17 +243,21 @@ async function studioPage(env, session, notice = '') {
     components,
   };
 }
+
 // Modal responses must be sent immediately, before any deferred acknowledgement.
 export async function openModal(env, interaction) {
   if (interaction.type !== 3) {
     return null;
   }
+
   const { session, action, target } = await panelSession(env, interaction);
   let title, components;
+
   if (action === 'connect' || action === 'key') {
     if (action === 'key') {
       await getStudio(env, session, target);
     }
+
     title = action === 'connect' ? '🏢 Connect studio' : '🔑 Replace API key';
     components = [
       ...(action === 'connect'
@@ -247,9 +275,11 @@ export async function openModal(env, interaction) {
     )
       .bind(session.guild_id)
       .all();
+
     if (!results.length) {
       throw new Error('Open Studios and connect a studio first.');
     }
+
     title = '🎮 Add game';
     components = [
       label(
@@ -293,6 +323,7 @@ export async function openModal(env, interaction) {
   } else {
     return null;
   }
+
   return {
     type: 9,
     data: {
@@ -309,6 +340,7 @@ export async function executePanel(env, interaction) {
     if (interaction.data.name !== 'panel') {
       throw new Error('Open /panel to manage your icons.');
     }
+
     await importExisting(env, interaction.guild_id);
     await refreshGameNames(env, interaction.guild_id);
     const session = {
@@ -316,6 +348,7 @@ export async function executePanel(env, interaction) {
       guild_id: interaction.guild_id,
       user_id: interaction.member.user.id,
     };
+
     await env.DB.prepare(
       'INSERT INTO panels(id,guild_id,user_id,expires_at) VALUES (?,?,?,?)',
     )
@@ -326,38 +359,50 @@ export async function executePanel(env, interaction) {
         Date.now() + 86400_000,
       )
       .run();
+
     return home(env, session);
   }
+
   const { session, action, target } = await panelSession(env, interaction);
   const back = [row(button(session, 'home', 'Back to panel'))];
   const values = modalValues(interaction.data);
+
   if (interaction.type === 3) {
     if (action === 'home') {
       return home(env, session);
     }
+
     if (action === 'game') {
       const game = await getGame(env, session, interaction.data.values?.[0]);
+
       await env.DB.prepare('UPDATE panels SET game_id = ? WHERE id = ?')
         .bind(game.id, session.id)
         .run();
+
       return home(env, { ...session, game_id: game.id });
     }
+
     if (action === 'studio') {
       const studio = await getStudio(
         env,
         session,
         interaction.data.values?.[0],
       );
+
       await env.DB.prepare('UPDATE panels SET studio_id = ? WHERE id = ?')
         .bind(studio.id, session.id)
         .run();
+
       return studioPage(env, { ...session, studio_id: studio.id });
     }
+
     if (action === 'studios') {
       return studioPage(env, session);
     }
+
     if (action === 'disconnect') {
       const studio = await getStudio(env, session, target);
+
       return {
         title: '🔌 Disconnect studio?',
         color: 0xfee75c,
@@ -370,6 +415,7 @@ export async function executePanel(env, interaction) {
         ],
       };
     }
+
     if (action === 'remove-key') {
       await getStudio(env, session, target);
       const active = await env.DB.prepare(
@@ -377,23 +423,28 @@ export async function executePanel(env, interaction) {
       )
         .bind(target)
         .first();
+
       if (active) {
         throw new Error(
           'Cancel this studio’s active countdowns and wait for them to stop before disconnecting.',
         );
       }
+
       await env.DB.prepare(
         "UPDATE studios SET encrypted_key = '' WHERE id = ? AND guild_id = ?",
       )
         .bind(target, session.guild_id)
         .run();
+
       return studioPage(env, session, 'Studio disconnected.');
     }
+
     if (action === 'overlays') {
       const result = await executeCommand(env, {
         ...interaction,
         data: { name: 'overlays' },
       });
+
       return {
         ...result,
         components: [
@@ -404,8 +455,10 @@ export async function executePanel(env, interaction) {
         ],
       };
     }
+
     if (action === 'cancel') {
       const game = await getGame(env, session, target);
+
       return {
         title: '⏹️ Cancel countdown?',
         color: 0xfee75c,
@@ -418,6 +471,7 @@ export async function executePanel(env, interaction) {
         ],
       };
     }
+
     if (action === 'status' || action === 'stop') {
       const game = await getGame(env, session, target);
       const result = await executeCommand(
@@ -430,6 +484,7 @@ export async function executePanel(env, interaction) {
           },
         },
       );
+
       return {
         ...result,
         components: [
@@ -441,9 +496,11 @@ export async function executePanel(env, interaction) {
       };
     }
   }
+
   if (interaction.type !== 5) {
     throw new Error('Open /panel again to continue.');
   }
+
   if (action === 'save-connect' || action === 'save-key') {
     const id =
       action === 'save-key'
@@ -455,6 +512,7 @@ export async function executePanel(env, interaction) {
       id,
       values.key || '',
     );
+
     if (action === 'save-key') {
       await env.DB.prepare(
         'UPDATE studios SET encrypted_key = ? WHERE id = ? AND guild_id = ?',
@@ -463,6 +521,7 @@ export async function executePanel(env, interaction) {
         .run();
     } else {
       const name = validateStudioName(values.name);
+
       if (
         await env.DB.prepare(
           'SELECT id FROM studios WHERE guild_id = ? AND name = ?',
@@ -474,37 +533,46 @@ export async function executePanel(env, interaction) {
           'A studio with this name already exists. Use Replace key to update it.',
         );
       }
+
       await env.DB.prepare('INSERT INTO studios VALUES (?,?,?,?,?)')
         .bind(id, session.guild_id, name, encrypted, Date.now())
         .run();
     }
+
     return studioPage(
       env,
       { ...session, studio_id: id },
       'Key saved. Access is checked when you add or update a game.',
     );
   }
+
   if (action === 'save-addgame') {
     const universe = values.universe;
+
     if (!/^[1-9]\d{0,19}$/.test(universe || '')) {
       throw new Error('Enter the numeric universe ID from Creator Dashboard.');
     }
+
     const scoped = await studioEnvironment(
       env,
       session.guild_id,
       values.studio || '',
     );
+
     scoped.UNIVERSE_ROOT_PLACES = '{}';
     const [publicDetails] = await fetchGames([universe]);
     const details =
       publicDetails || (await authenticatedGame(scoped, universe));
     const name = details?.name.trim().slice(0, 100) || 'Game';
+
     if (details?.rootPlaceId) {
       scoped.UNIVERSE_ROOT_PLACES = JSON.stringify({
         [universe]: String(details.rootPlaceId),
       });
     }
+
     let place;
+
     try {
       place = await getPlace(scoped, universe);
     } catch (error) {
@@ -512,7 +580,9 @@ export async function executePanel(env, interaction) {
       // eslint-disable-next-line preserve-caught-error
       throw new Error(cleanError(error, scoped));
     }
+
     const id = crypto.randomUUID();
+
     if (
       await env.DB.prepare(
         'SELECT id FROM games WHERE guild_id = ? AND universe_id = ?',
@@ -522,14 +592,17 @@ export async function executePanel(env, interaction) {
     ) {
       throw new Error('This game is already saved in this server.');
     }
+
     await env.DB.prepare('INSERT INTO games VALUES (?,?,?,?,?,?)')
       .bind(id, session.guild_id, values.studio, name, universe, place.placeId)
       .run();
     await env.DB.prepare('UPDATE panels SET game_id = ? WHERE id = ?')
       .bind(id, session.id)
       .run();
+
     return home(env, { ...session, game_id: id }, 'Game connected.');
   }
+
   if (
     ['save-upload', 'save-preview', 'save-update', 'save-schedule'].includes(
       action,
@@ -544,8 +617,10 @@ export async function executePanel(env, interaction) {
         value: values.image,
       },
     ];
+
     if (action !== 'save-upload') {
       const game = await getGame(env, session, target);
+
       studioId = game.studio_id;
       scoped =
         action === 'save-preview'
@@ -557,10 +632,12 @@ export async function executePanel(env, interaction) {
       });
       options.push({ name: 'universe_id', value: game.universe_id });
     }
+
     if (action === 'save-schedule') {
       if (!/^(Z|[+-](0\d|1[0-4]):[0-5]\d)$/.test(values.timezone || '')) {
         throw new Error('Use a UTC offset such as +02:00 or +01:00.');
       }
+
       options.push({
         name: 'target_time',
         value: `${String(values.date || '')
@@ -568,12 +645,14 @@ export async function executePanel(env, interaction) {
           .replace(' ', 'T')}${values.timezone}`,
       });
     }
+
     const name = {
       'save-upload': 'overlay',
       'save-preview': 'previewoverlay',
       'save-update': 'testicon',
       'save-schedule': 'updategame',
     }[action];
+
     try {
       const result = await executeCommand(
         scoped,
@@ -583,6 +662,7 @@ export async function executePanel(env, interaction) {
         },
         { studioId },
       );
+
       return {
         ...result,
         components:
@@ -601,5 +681,6 @@ export async function executePanel(env, interaction) {
       throw new Error(cleanError(error, scoped));
     }
   }
+
   throw new Error('Open /panel again to continue.');
 }

@@ -31,13 +31,16 @@ export async function executeCommand(
     if (!STAGES.some(([name]) => name === values.stage)) {
       throw new Error('Invalid countdown stage.');
     }
+
     return values.stage;
   };
+
   switch (interaction.data.name) {
     case 'overlay': {
       const label = stage();
       const blob = await attachmentImage(env, attachment('image'), true);
       const key = `overlays/${guild}/${crypto.randomUUID()}.png`;
+
       await putFile(env, key, blob);
       await env.DB.prepare(
         `INSERT INTO overlays(guild_id, stage, object_key, updated_at) VALUES (?, ?, ?, ?)
@@ -45,12 +48,14 @@ export async function executeCommand(
       )
         .bind(guild, label, key, Date.now())
         .run();
+
       return {
         content: `**${label}** is ready to use.\nAdd another stage or head back to preview it.`,
         title: '✅ Overlay saved',
         color: 0x57f287,
       };
     }
+
     case 'overlays': {
       const { results } = await env.DB.prepare(
         'SELECT stage FROM overlays WHERE guild_id = ?',
@@ -63,36 +68,44 @@ export async function executeCommand(
       const missing = STAGES.filter(
         ([name]) => !results.some((x) => x.stage === name),
       ).map((x) => x[0]);
+
       return {
         content: `**${saved.length} / 9 stages ready**\n\n✅ **Saved**\n${saved.join(' · ') || 'None yet'}\n\n${missing.length ? `⬜ **Still needed**\n${missing.join(' · ')}` : '🎉 Your countdown set is complete.'}\n\nUpload a transparent PNG to add or replace a stage.`,
         title: '🎨 Overlays',
       };
     }
+
     case 'previewoverlay': {
       const row = await env.DB.prepare(
         'SELECT object_key FROM overlays WHERE guild_id = ? AND stage = ?',
       )
         .bind(guild, stage())
         .first();
+
       if (!row) {
         throw new Error('Save this stage in Overlays first.');
       }
+
       const base = await attachmentImage(env, attachment('icon'));
       const overlay = await getFile(env, row.object_key);
+
       if (!overlay) {
         throw new Error(
           'Overlay is not available yet. Wait a minute and try again.',
         );
       }
+
       return {
         title: '👀 Icon preview',
         content: `**${values.stage}** · 512 × 512\nPreview only — your live icon is unchanged.`,
         file: await compose(env, base.stream(), overlay.body),
       };
     }
+
     case 'testicon':
     case 'updategame': {
       const isTest = interaction.data.name === 'testicon';
+
       universeAllowed(values.universe_id, env);
       const now = Date.now();
       const target = isTest ? now : parseTarget(values.target_time, now);
@@ -104,19 +117,23 @@ export async function executeCommand(
       )
         .bind(values.universe_id)
         .first();
+
       if (active) {
         throw new Error(
           'An active schedule already exists for this universe. Cancel it and wait for cancellation to complete first.',
         );
       }
+
       const allActive = await env.DB.prepare(
         "SELECT COUNT(*) AS count FROM schedules WHERE status = 'active'",
       ).first();
+
       if (allActive.count >= 3) {
         throw new Error(
           'This small deployment supports at most three active schedules.',
         );
       }
+
       const { results: overlays } = await env.DB.prepare(
         'SELECT * FROM overlays WHERE guild_id = ?',
       )
@@ -126,15 +143,18 @@ export async function executeCommand(
       const missing = required.filter(
         (name) => !overlays.some((x) => x.stage === name),
       );
+
       if (missing.length) {
         throw new Error(`Upload these overlays first: ${missing.join(', ')}.`);
       }
+
       const [place, base] = await Promise.all([
         getPlace(env, values.universe_id),
         attachmentImage(env, attachment('icon')),
       ]);
       const id = crypto.randomUUID();
       const key = `bases/${id}`;
+
       await putFile(env, key, base);
       await env.DB.batch([
         env.DB.prepare(
@@ -166,6 +186,7 @@ export async function executeCommand(
         ),
       ]);
       const gameName = await savedGameLabel(env, guild, values.universe_id);
+
       if (isTest) {
         return {
           title: '🚀 Icon update queued',
@@ -173,12 +194,14 @@ export async function executeCommand(
           content: `Queued a real main-icon change.\n\n⏳ **${values.stage}**\n🎮 ${gameName}\n\nAllow a few minutes for Roblox to process it.\nCheck **Status** for progress. Your new icon stays live afterward.`,
         };
       }
+
       return {
         title: '📅 Countdown scheduled',
         color: 0x57f287,
         content: `Scheduled ${gameName}.\n\n🚀 **Launch**\n<t:${Math.floor(target / 1000)}:F>\n\n⏳ **Stages**\n${stages.map((x) => x.stage).join(' → ')}\n\nWe’ll take it from here. Check **Status** for progress.\nRoblox processing may delay visible updates.`,
       };
     }
+
     case 'gamestatus': {
       universeAllowed(values.universe_id, env);
       const schedule = await env.DB.prepare(
@@ -186,6 +209,7 @@ export async function executeCommand(
       )
         .bind(values.universe_id, guild)
         .first();
+
       if (!schedule) {
         return {
           title: '📊 Status',
@@ -193,11 +217,13 @@ export async function executeCommand(
             'Nothing scheduled yet.\nChoose **Update now** or **Schedule** to get started.',
         };
       }
+
       const { results: jobs } = await env.DB.prepare(
         'SELECT * FROM jobs WHERE schedule_id = ? ORDER BY due_at',
       )
         .bind(schedule.id)
         .all();
+
       return {
         title:
           schedule.status === 'complete'
@@ -225,6 +251,7 @@ export async function executeCommand(
           .slice(0, 1900),
       };
     }
+
     case 'cancelgame': {
       universeAllowed(values.universe_id, env);
       const result = await env.DB.prepare(
@@ -232,6 +259,7 @@ export async function executeCommand(
       )
         .bind(values.universe_id, guild)
         .run();
+
       return {
         title: '⏹️ Countdown',
         content: result.meta.changes
@@ -239,6 +267,7 @@ export async function executeCommand(
           : 'No active countdown for this game.',
       };
     }
+
     default:
       throw new Error('Unknown command. Re-register this bot’s commands.');
   }

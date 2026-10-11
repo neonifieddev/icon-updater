@@ -7,8 +7,10 @@ function hexBytes(hex, length) {
   if (!new RegExp(`^[0-9a-fA-F]{${length * 2}}$`).test(hex || '')) {
     throw new Error('Invalid hex');
   }
+
   return Uint8Array.from(hex.match(/../g), (pair) => parseInt(pair, 16));
 }
+
 export async function verifyDiscord(
   request,
   rawBody,
@@ -17,12 +19,14 @@ export async function verifyDiscord(
 ) {
   try {
     const timestamp = request.headers.get('x-signature-timestamp');
+
     if (
       !/^\d+$/.test(timestamp || '') ||
       Math.abs(now / 1000 - Number(timestamp)) > 300
     ) {
       return false;
     }
+
     const key = await crypto.subtle.importKey(
       'raw',
       hexBytes(publicKey, 32),
@@ -30,6 +34,7 @@ export async function verifyDiscord(
       false,
       ['verify'],
     );
+
     return await crypto.subtle.verify(
       'Ed25519',
       key,
@@ -40,8 +45,10 @@ export async function verifyDiscord(
     return false;
   }
 }
+
 async function finishCommand(env, interaction) {
   let result;
+
   try {
     result = await executePanel(env, interaction);
   } catch (error) {
@@ -50,9 +57,11 @@ async function finishCommand(env, interaction) {
       content: cleanError(error, env),
       error: true,
     };
+
     if (interaction.type !== 2) {
       try {
         const { session } = await panelSession(env, interaction);
+
         result.components = [
           {
             type: 1,
@@ -72,6 +81,7 @@ async function finishCommand(env, interaction) {
       }
     }
   }
+
   const payload = {
     embeds: [
       {
@@ -88,6 +98,7 @@ async function finishCommand(env, interaction) {
   };
   let body;
   let headers;
+
   if (result.file) {
     body = new FormData();
     body.set(
@@ -102,6 +113,7 @@ async function finishCommand(env, interaction) {
     body = JSON.stringify(payload);
     headers = { 'Content-Type': 'application/json' };
   }
+
   try {
     const response = await fetch(
       `https://discord.com/api/v10/webhooks/${env.DISCORD_APPLICATION_ID}/${interaction.token}/messages/@original`,
@@ -112,6 +124,7 @@ async function finishCommand(env, interaction) {
         signal: AbortSignal.timeout(8_000),
       },
     );
+
     if (!response.ok) {
       console.error('Discord response delivery failed', response.status);
     }
@@ -119,19 +132,25 @@ async function finishCommand(env, interaction) {
     console.error('Discord response delivery failed');
   }
 }
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
     if (url.pathname === '/health' && request.method === 'GET') {
       return Response.json({ ok: true });
     }
+
     if (url.pathname !== '/interactions' || request.method !== 'POST') {
       return new Response('Not found', { status: 404 });
     }
+
     if (Number(request.headers.get('content-length')) > 128_000) {
       return new Response('Too large', { status: 413 });
     }
+
     let body;
+
     try {
       body = await (
         await readLimited(new Response(request.body), 128_000)
@@ -139,24 +158,31 @@ export default {
     } catch {
       return new Response('Too large or empty', { status: 413 });
     }
+
     if (!(await verifyDiscord(request, body, env.DISCORD_PUBLIC_KEY))) {
       return new Response('Invalid signature', { status: 401 });
     }
+
     let interaction;
+
     try {
       interaction = JSON.parse(body);
     } catch {
       return new Response('Invalid JSON', { status: 400 });
     }
+
     if (interaction.application_id !== env.DISCORD_APPLICATION_ID) {
       return new Response('Wrong application', { status: 401 });
     }
+
     if (interaction.type === 1) {
       return Response.json({ type: 1 });
     }
+
     if (![2, 3, 5].includes(interaction.type)) {
       return new Response('Unsupported interaction', { status: 400 });
     }
+
     if (!authorize(interaction, env)) {
       return Response.json({
         type: 4,
@@ -167,9 +193,11 @@ export default {
         },
       });
     }
+
     if (interaction.type === 3) {
       try {
         const modal = await openModal(env, interaction);
+
         if (modal) {
           return Response.json(modal);
         }
@@ -180,15 +208,18 @@ export default {
         });
       }
     }
+
     // Do not log interaction bodies: they contain short-lived Discord webhook tokens.
     const inserted = await env.DB.prepare(
       'INSERT OR IGNORE INTO interactions(id, created_at) VALUES (?, ?)',
     )
       .bind(interaction.id, Date.now())
       .run();
+
     if (inserted.meta.changes) {
       ctx.waitUntil(finishCommand(env, interaction));
     }
+
     return Response.json(
       interaction.type === 3 ? { type: 6 } : { type: 5, data: { flags: 64 } },
     );

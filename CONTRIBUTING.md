@@ -23,6 +23,7 @@ Use the project's ESLint and Prettier configuration. The baseline follows the co
 - Use descriptive names such as `session`, `studio`, and `componentId`. Keep abbreviations for familiar terms such as `id`, `env`, and `url`.
 - Prefer `const`, use `let` for reassignment, and never use `var`.
 - Use braces on every conditional and loop. Prefer guard clauses to deep nesting and avoid nested ternaries.
+- Leave one blank line between functions and logical steps. Keep related declarations together; separate validation, database work, and returns. ESLint enforces the statement spacing, and Prettier preserves it.
 - Group imports, constants, helpers, and handlers. Add short section comments only when they help navigate a larger module.
 - Keep modules focused. Introduce a helper when it gives repeated or complicated behavior a useful name; avoid layers that only forward arguments.
 - Comments explain constraints or tradeoffs. Do not narrate obvious statements.

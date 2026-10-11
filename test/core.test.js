@@ -21,6 +21,7 @@ test('access is limited to configured guilds and authorized people or administra
     guild_id: 'a',
     member: { user: { id: 'admin' }, permissions: '8' },
   };
+
   assert.equal(authorize(interaction, env), true);
   assert.equal(authorize({ ...interaction, guild_id: 'b' }, env), false);
   assert.equal(
@@ -47,10 +48,12 @@ test('access is limited to configured guilds and authorized people or administra
 });
 test('target times require a timezone, valid calendar date, and preparation time', () => {
   const now = Date.parse('2026-10-01T00:00:00Z');
+
   assert.equal(
     parseTarget('2026-10-02T18:00:00+02:00', now),
     Date.parse('2026-10-02T16:00:00Z'),
   );
+
   for (const invalid of [
     '2026-10-02T18:00',
     '2026-10-01T00:05:00Z',
@@ -62,6 +65,7 @@ test('target times require a timezone, valid calendar date, and preparation time
 });
 test('late starts keep only the currently applicable stage and future checkpoints', () => {
   const target = 24 * 3600_000;
+
   assert.deepEqual(
     stagesFor(target, 0).map((x) => x.stage),
     ['24h', '12h', '6h', '3h', '2h', '1h', '30m', '15m', 'NOW'],
@@ -103,6 +107,7 @@ test('Discord signature verification rejects changed payloads and stale requests
       'x-signature-ed25519': signature,
     },
   });
+
   assert.equal(await verifyDiscord(request, body, publicKey), true);
   assert.equal(await verifyDiscord(request, '{}', publicKey), false);
   assert.equal(
@@ -120,16 +125,20 @@ test('attachment downloader enforces byte limits even without content-length', a
 
 test('slash-command ephemeral PNG attachments are accepted with signed URLs intact', async (t) => {
   const original = globalThis.fetch;
+
   t.after(() => {
     globalThis.fetch = original;
   });
   const url =
     'https://cdn.discordapp.com/ephemeral-attachments/123/456/overlay.png?ex=abc&is=def&hm=signature';
+
   globalThis.fetch = async (input, init) => {
     assert.equal(String(input), url);
     assert.equal(init.redirect, 'manual');
+
     return new Response(new Uint8Array([137, 80, 78, 71]));
   };
+
   const env = {
     IMAGES: {
       async info() {
@@ -137,7 +146,9 @@ test('slash-command ephemeral PNG attachments are accepted with signed URLs inta
       },
     },
   };
+
   assert.equal((await attachmentImage(env, { url, size: 4 }, true)).size, 4);
+
   for (const bad of [
     'https://cdn.discordapp.com.evil.test/ephemeral-attachments/a',
     'http://cdn.discordapp.com/attachments/a',

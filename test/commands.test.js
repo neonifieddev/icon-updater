@@ -17,29 +17,36 @@ test('testicon queues only the chosen stage without a date or other overlays', a
       },
     },
   };
+
   t.after(() => env.DB.close());
   await env.DB.prepare('INSERT INTO overlays VALUES (?, ?, ?, ?)')
     .bind('guild', '6h', 'saved-six-hour', Date.now())
     .run();
   const original = globalThis.fetch;
+
   t.after(() => {
     globalThis.fetch = original;
   });
+
   globalThis.fetch = async (url) => {
     if (String(url).includes('cdn.discordapp.com')) {
       return new Response('image');
     }
+
     if (url.includes('readMask')) {
       return Response.json({ icon: 'assets/previous' });
     }
+
     if (url.includes('game-icon')) {
       return Response.json({ data: [] });
     }
+
     return Response.json({
       assetType: 'Place',
       creationContext: { creator: { userId: '3001' } },
     });
   };
+
   const interaction = {
     guild_id: 'guild',
     channel_id: 'channel',
@@ -60,11 +67,13 @@ test('testicon queues only the chosen stage without a date or other overlays', a
       },
     },
   };
+
   assert.match(
     (await executeCommand(env, interaction)).content,
     /Queued a real main-icon change/,
   );
   const { results } = await env.DB.prepare('SELECT * FROM jobs').all();
+
   assert.equal(results.length, 1);
   assert.equal(results[0].stage, '6h');
   assert.equal(results[0].overlay_key, 'saved-six-hour');
@@ -84,34 +93,44 @@ test('creating a schedule snapshots all overlays and resolves the owner without 
       },
     },
   };
+
   t.after(() => env.DB.close());
+
   for (const [stage] of STAGES) {
     await env.DB.prepare('INSERT INTO overlays VALUES (?, ?, ?, ?)')
       .bind('guild', stage, `original/${stage}`, Date.now())
       .run();
   }
+
   const original = globalThis.fetch;
+
   t.after(() => {
     globalThis.fetch = original;
   });
+
   globalThis.fetch = async (url, init = {}) => {
     assert.ok(!init.method || init.method === 'GET');
+
     if (String(url).includes('cdn.discordapp.com')) {
       return new Response('test image');
     }
+
     if (url.includes('readMask=icon')) {
       return Response.json({ icon: 'assets/previous' });
     }
+
     if (url.includes('game-icon')) {
       return Response.json({
         data: [{ imageId: 'previous', languageCode: 'en' }],
       });
     }
+
     return Response.json({
       assetType: 'Place',
       creationContext: { creator: { userId: '3001' } },
     });
   };
+
   const target = new Date(Date.now() + 48 * 3600_000)
     .toISOString()
     .replace(/\.\d{3}Z$/, 'Z');
@@ -136,6 +155,7 @@ test('creating a schedule snapshots all overlays and resolves the owner without 
     },
   };
   const result = await executeCommand(env, interaction);
+
   assert.match(result.content, /Scheduled Game/);
   assert.equal(
     (await env.DB.prepare('SELECT COUNT(*) AS n FROM jobs').first()).n,
@@ -143,6 +163,7 @@ test('creating a schedule snapshots all overlays and resolves the owner without 
   );
   await env.DB.prepare("UPDATE overlays SET object_key = 'replacement'").run();
   const { results: jobs } = await env.DB.prepare('SELECT * FROM jobs').all();
+
   assert.ok(jobs.every((job) => job.overlay_key.startsWith('original/')));
   await assert.rejects(
     executeCommand(env, interaction),
@@ -164,7 +185,9 @@ test('signed Discord ping, forged signature, and interaction replay', async (t) 
     ALLOWED_GUILD_IDS: 'guild',
     ALLOW_SERVER_ADMINS: 'true',
   };
+
   t.after(() => env.DB.close());
+
   async function request(data) {
     const raw = JSON.stringify(data);
     const timestamp = String(Math.floor(Date.now() / 1000));
@@ -175,6 +198,7 @@ test('signed Discord ping, forged signature, and interaction replay', async (t) 
         new TextEncoder().encode(timestamp + raw),
       ),
     ).toString('hex');
+
     return new Request('https://bot.test/interactions', {
       method: 'POST',
       body: raw,
@@ -184,12 +208,14 @@ test('signed Discord ping, forged signature, and interaction replay', async (t) 
       },
     });
   }
+
   const pending = [];
   const ctx = {
     waitUntil(promise) {
       pending.push(promise);
     },
   };
+
   assert.deepEqual(
     await (
       await worker.fetch(
@@ -214,14 +240,18 @@ test('signed Discord ping, forged signature, and interaction replay', async (t) 
     401,
   );
   const original = globalThis.fetch;
+
   t.after(() => {
     globalThis.fetch = original;
   });
   let edits = 0;
+
   globalThis.fetch = async () => {
     edits++;
+
     return Response.json({});
   };
+
   const command = {
     id: 'interaction',
     type: 2,
@@ -231,6 +261,7 @@ test('signed Discord ping, forged signature, and interaction replay', async (t) 
     token: 'test',
     data: { name: 'overlays' },
   };
+
   assert.equal(
     (await (await worker.fetch(await request(command), env, ctx)).json()).type,
     5,

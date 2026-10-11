@@ -13,12 +13,14 @@ import {
 
 export async function updateJob(env, id, changes) {
   const fields = Object.keys(changes);
+
   await env.DB.prepare(
     `UPDATE jobs SET ${fields.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`,
   )
     .bind(...Object.values(changes), id)
     .run();
 }
+
 async function notify(env, id, schedule, content) {
   await env.DB.prepare(
     'INSERT OR IGNORE INTO notifications(id, channel_id, content) VALUES (?, ?, ?)',
@@ -26,13 +28,16 @@ async function notify(env, id, schedule, content) {
     .bind(id, schedule.channel_id, content)
     .run();
 }
+
 async function flushNotifications(env) {
   if (!env.DISCORD_TOKEN) {
     return;
   }
+
   const { results } = await env.DB.prepare(
     'SELECT * FROM notifications WHERE sent = 0 AND attempts < 5 LIMIT 2',
   ).all();
+
   for (const item of results) {
     try {
       const response = await fetch(
@@ -52,6 +57,7 @@ async function flushNotifications(env) {
           signal: AbortSignal.timeout(8_000),
         },
       );
+
       await env.DB.prepare(
         'UPDATE notifications SET sent = ?, attempts = attempts + 1 WHERE id = ?',
       )
@@ -66,60 +72,75 @@ async function flushNotifications(env) {
     }
   }
 }
+
 export async function prepareJob(env, schedule, job, now) {
   let changes = {};
+
   if (job.state === 'pending') {
     const [base, overlay] = await Promise.all([
       getFile(env, schedule.base_key),
       getFile(env, job.overlay_key),
     ]);
+
     if (!base || !overlay) {
       throw new Error(
         'Source image is not available yet; waiting for storage propagation.',
       );
     }
+
     const blob = await compose(env, base.body, overlay.body);
     const key = `rendered/${job.id}.png`;
+
     await putFile(env, key, blob);
     changes = { rendered_key: key, state: 'rendered' };
   } else if (job.state === 'rendered') {
     const file = await getFile(env, job.rendered_key);
+
     if (!file) {
       throw new Error(
         'Generated image is not available yet; waiting for storage propagation.',
       );
     }
+
     const result = await uploadImage(
       env,
       JSON.parse(schedule.creator_json),
       new Blob([await file.arrayBuffer()], { type: 'image/png' }),
       job.stage,
     );
+
     changes = result.operation
       ? { upload_operation: result.operation, state: 'uploading' }
       : { image_id: result.imageId, state: 'moderating' };
   } else if (job.state === 'uploading') {
     const result = await pollOperation(env, job.upload_operation);
+
     if (!result) {
       if (now > schedule.created_at + 24 * 3600_000) {
         throw new Error('Upload operation still incomplete after 24 hours.');
       }
+
       await updateJob(env, job.id, { next_attempt: now + 60_000 });
+
       return;
     }
+
     changes = { image_id: assetId(result), state: 'moderating' };
   } else if (job.state === 'moderating') {
     const result = await roblox(env, `/assets/v1/assets/${job.image_id}`);
     const moderation = String(
       result.moderationResult?.moderationState || '',
     ).toUpperCase();
+
     if (moderation.endsWith('REJECTED')) {
       const error = new Error(
         `Roblox rejected the ${job.stage} image. Replace its artwork and create a new schedule.`,
       );
+
       error.permanent = true;
       throw error;
     }
+
     if (!moderation.endsWith('APPROVED')) {
       if (
         now >
@@ -130,11 +151,15 @@ export async function prepareJob(env, schedule, job, now) {
       ) {
         throw new Error('Image moderation did not complete in time.');
       }
+
       await updateJob(env, job.id, { next_attempt: now + 60_000 });
+
       return;
     }
+
     changes = { state: 'ready' };
   }
+
   if (Object.keys(changes).length) {
     await updateJob(env, job.id, {
       ...changes,
@@ -144,54 +169,70 @@ export async function prepareJob(env, schedule, job, now) {
     });
   }
 }
+
 export async function applyJob(env, schedule, job, now) {
   if (job.state === 'applying' && job.apply_operation) {
     const result = await pollOperation(env, job.apply_operation);
+
     if (!result) {
       if (now > job.due_at + 3600_000) {
         throw new Error('Icon update operation has not completed.');
       }
+
       await updateJob(env, job.id, { next_attempt: now + 60_000 });
+
       return;
     }
+
     await updateJob(env, job.id, { apply_operation: null });
   }
+
   const current = await roblox(
     env,
     `/assets/v1/assets/${schedule.place_id}?readMask=icon`,
   );
+
   if (current.icon !== `assets/${job.image_id}`) {
     if (job.state === 'applying') {
       throw new Error(
         'Roblox accepted the icon update, but metadata readback has not matched yet.',
       );
     }
+
     const fresh = await env.DB.prepare(
       'SELECT status, cancel_requested FROM schedules WHERE id = ?',
     )
       .bind(schedule.id)
       .first();
+
     if (fresh?.status !== 'active' || fresh.cancel_requested) {
       return;
     }
+
     // Re-check time at the point of mutation, not only at the start of this cron invocation.
     const newer = await env.DB.prepare(
       'SELECT id FROM jobs WHERE schedule_id = ? AND due_at > ? AND due_at <= ? LIMIT 1',
     )
       .bind(schedule.id, job.due_at, Date.now())
       .first();
+
     if (newer) {
       await updateJob(env, job.id, { state: 'skipped' });
+
       return;
     }
+
     const result = await patchIcon(env, schedule.place_id, job.image_id);
+
     await updateJob(env, job.id, {
       state: 'applying',
       apply_operation: operationPath(result),
       next_attempt: now + 60_000,
     });
+
     return;
   }
+
   // Main metadata is not enough: compare actual public and uploaded-image renders.
   const [gameResponse, imageResponse] = await Promise.all([
     fetch(
@@ -203,11 +244,14 @@ export async function applyJob(env, schedule, job, now) {
       { signal: AbortSignal.timeout(10_000) },
     ),
   ]);
+
   if (!gameResponse.ok || !imageResponse.ok) {
     throw new Error('Could not verify the public icon render.');
   }
+
   const game = (await gameResponse.json()).data?.[0];
   const image = (await imageResponse.json()).data?.[0];
+
   if (
     game?.state !== 'Completed' ||
     image?.state !== 'Completed' ||
@@ -218,6 +262,7 @@ export async function applyJob(env, schedule, job, now) {
       'Main icon is set, but public rendering differs. Check caching or localized overrides in Creator Dashboard.',
     );
   }
+
   await updateJob(env, job.id, {
     state: 'applied',
     applied_at: now,
@@ -240,10 +285,12 @@ export async function applyJob(env, schedule, job, now) {
     .bind(schedule.id, schedule.id, job.due_at)
     .run();
 }
+
 async function handleFailure(env, schedule, job, error, now) {
   const attempts = job.attempts + 1;
   const message = cleanError(error, env);
   const failed = error.permanent || attempts >= 8;
+
   await updateJob(env, job.id, {
     attempts,
     last_error: message,
@@ -253,6 +300,7 @@ async function handleFailure(env, schedule, job, error, now) {
   await env.DB.prepare('UPDATE schedules SET last_error = ? WHERE id = ?')
     .bind(`${job.stage}: ${message}`, schedule.id)
     .run();
+
   if (failed || attempts === 1) {
     await notify(
       env,
@@ -261,6 +309,7 @@ async function handleFailure(env, schedule, job, error, now) {
       `${job.stage} for ${await savedGameLabel(env, schedule.guild_id, schedule.universe_id)}: ${message}${failed ? ' Open /panel → Status; this stage has stopped retrying.' : ' Retrying automatically.'}`,
     );
   }
+
   if (failed) {
     await env.DB.prepare(
       "UPDATE schedules SET status = 'failed' WHERE id = ? AND NOT EXISTS (SELECT 1 FROM jobs WHERE schedule_id = ? AND due_at > ?)",
@@ -269,6 +318,7 @@ async function handleFailure(env, schedule, job, error, now) {
       .run();
   }
 }
+
 export async function runScheduler(env) {
   const started = Date.now();
   const token = crypto.randomUUID();
@@ -278,9 +328,11 @@ export async function runScheduler(env) {
   )
     .bind(token, started + 180_000, started)
     .run();
+
   if (!lock.meta.changes) {
     return;
   }
+
   try {
     await env.DB.prepare(
       "UPDATE schedules SET status = 'cancelled' WHERE status = 'active' AND cancel_requested = 1",
@@ -289,8 +341,10 @@ export async function runScheduler(env) {
       "SELECT * FROM schedules WHERE status = 'active' ORDER BY target_at LIMIT 3",
     ).all();
     let budget = 6;
+
     for (const schedule of schedules) {
       let scoped = env;
+
       if (schedule.studio_id) {
         try {
           scoped = await studioEnvironment(
@@ -300,6 +354,7 @@ export async function runScheduler(env) {
           );
         } catch (error) {
           const message = cleanError(error, env);
+
           await env.DB.prepare(
             "UPDATE schedules SET status = 'failed', last_error = ? WHERE id = ?",
           )
@@ -314,6 +369,7 @@ export async function runScheduler(env) {
           continue;
         }
       }
+
       let jobs = (
         await env.DB.prepare(
           'SELECT * FROM jobs WHERE schedule_id = ? ORDER BY due_at',
@@ -322,6 +378,7 @@ export async function runScheduler(env) {
           .all()
       ).results;
       const due = latestDue(jobs, Date.now());
+
       if (due) {
         await env.DB.prepare(
           "UPDATE jobs SET state = 'skipped' WHERE schedule_id = ? AND due_at < ? AND state NOT IN ('applied', 'applying', 'skipped')",
@@ -329,17 +386,21 @@ export async function runScheduler(env) {
           .bind(schedule.id, due.due_at)
           .run();
       }
+
       // Settle already submitted PATCH operations before issuing another update.
       const applying = jobs.find((j) => j.state === 'applying');
       const candidate = applying || (due?.state === 'ready' ? due : null);
+
       if (candidate && candidate.next_attempt <= Date.now() && budget > 0) {
         try {
           await applyJob(scoped, schedule, candidate, Date.now());
         } catch (error) {
           await handleFailure(scoped, schedule, candidate, error, Date.now());
         }
+
         budget -= 2;
       }
+
       jobs = (
         await env.DB.prepare(
           'SELECT * FROM jobs WHERE schedule_id = ? ORDER BY due_at',
@@ -347,10 +408,12 @@ export async function runScheduler(env) {
           .bind(schedule.id)
           .all()
       ).results;
+
       for (const job of jobs) {
         if (budget <= 0 || Date.now() - started > 45_000) {
           break;
         }
+
         if (
           !['pending', 'rendered', 'uploading', 'moderating'].includes(
             job.state,
@@ -359,14 +422,17 @@ export async function runScheduler(env) {
         ) {
           continue;
         }
+
         try {
           await prepareJob(scoped, schedule, job, Date.now());
         } catch (error) {
           await handleFailure(scoped, schedule, job, error, Date.now());
         }
+
         budget--;
       }
     }
+
     await flushNotifications(env);
     await env.DB.prepare('DELETE FROM panels WHERE expires_at < ?')
       .bind(Date.now())

@@ -4,9 +4,11 @@ import { roblox } from './roblox.js';
 export async function authenticatedGame(env, universe) {
   try {
     const details = await roblox(env, `/cloud/v2/universes/${universe}`);
+
     if (!details.displayName?.trim()) {
       return null;
     }
+
     return {
       id: universe,
       name: details.displayName.trim(),
@@ -22,6 +24,7 @@ export function gameLabel(name, universe) {
     String(name || 'Game')
       .replace(/[\\*_`~|<>[\]\r\n]/g, '')
       .trim() || 'Game';
+
   return `${clean} (${universe})`;
 }
 
@@ -29,15 +32,19 @@ export async function fetchGames(universes) {
   if (!universes.length) {
     return [];
   }
+
   try {
     const response = await fetch(
       `https://games.roblox.com/v1/games?universeIds=${universes.join(',')}`,
       { signal: AbortSignal.timeout(8000) },
     );
+
     if (!response.ok) {
       return [];
     }
+
     const data = (await response.json()).data;
+
     return Array.isArray(data)
       ? data.filter(
           (game) =>
@@ -58,6 +65,7 @@ export async function refreshGameNames(env, guild) {
     .bind(guild)
     .all();
   const details = await fetchGames(results.map((game) => game.universe_id));
+
   await Promise.all(
     results
       .filter(
@@ -70,6 +78,7 @@ export async function refreshGameNames(env, guild) {
             scoped,
             game.universe_id,
           );
+
           if (authenticated) {
             details.push(authenticated);
           }
@@ -83,6 +92,7 @@ export async function refreshGameNames(env, guild) {
       .find((item) => String(item.id) === game.universe_id)
       ?.name.trim()
       .slice(0, 100);
+
     return name && name !== game.name
       ? [
           env.DB.prepare(
@@ -91,6 +101,7 @@ export async function refreshGameNames(env, guild) {
         ]
       : [];
   });
+
   if (changes.length) {
     await env.DB.batch(changes);
   }
@@ -102,5 +113,6 @@ export async function savedGameLabel(env, guild, universe) {
   )
     .bind(guild, universe)
     .first();
+
   return gameLabel(game?.name, universe);
 }

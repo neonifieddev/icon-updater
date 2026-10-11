@@ -1,8 +1,10 @@
 import { STAGES } from './core.js';
 
 export const row = (...components) => ({ type: 1, components });
+
 export const componentId = (session, action, target = '') =>
   `p:${session.id}:${action}${target ? `:${target}` : ''}`;
+
 const BUTTON_ICONS = {
   preview: '👀',
   update: '🚀',
@@ -20,6 +22,7 @@ const BUTTON_ICONS = {
   home: '↩️',
   upload: '📤',
 };
+
 export const button = (
   session,
   action,
@@ -35,12 +38,14 @@ export const button = (
   disabled,
   ...(BUTTON_ICONS[action] ? { emoji: { name: BUTTON_ICONS[action] } } : {}),
 });
+
 export const label = (text, component, description) => ({
   type: 18,
   label: text,
   component,
   ...(description ? { description } : {}),
 });
+
 export const input = (customId, placeholder, maxLength = 80) => ({
   type: 4,
   custom_id: customId,
@@ -49,6 +54,7 @@ export const input = (customId, placeholder, maxLength = 80) => ({
   max_length: maxLength,
   placeholder,
 });
+
 export const select = (customId, options, placeholder) => ({
   type: 3,
   custom_id: customId,
@@ -57,6 +63,7 @@ export const select = (customId, options, placeholder) => ({
   max_values: 1,
   ...(placeholder ? { placeholder } : {}),
 });
+
 export const stageField = () =>
   label(
     '⏳ Countdown stage',
@@ -69,6 +76,7 @@ export const stageField = () =>
       })),
     ),
   );
+
 export const fileField = (overlay) =>
   label(
     overlay ? 'Overlay PNG' : 'Base icon',
