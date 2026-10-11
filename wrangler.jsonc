@@ -1,0 +1,39 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "roblox-countdown-icon-bot",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-09-27",
+  "workers_dev": true,
+  "triggers": {
+    "crons": ["* * * * *"],
+  },
+  "images": {
+    "binding": "IMAGES",
+  },
+  "kv_namespaces": [
+    {
+      "binding": "FILES",
+      "id": "00000000000000000000000000000000",
+    },
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "icon-countdown",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "vars": {
+    "DISCORD_APPLICATION_ID": "",
+    "DISCORD_PUBLIC_KEY": "",
+    "ALLOWED_GUILD_IDS": "",
+    "ALLOWED_USER_IDS": "",
+    "ALLOW_SERVER_ADMINS": "true",
+    "ALLOWED_UNIVERSE_IDS": "",
+    "UNIVERSE_ROOT_PLACES": "{}",
+  },
+  "observability": {
+    "enabled": true,
+  },
+}

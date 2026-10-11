@@ -1,0 +1,8 @@
+node_modules/
+.wrangler/
+dist/
+diagnostics/
+coverage/
+package-lock.json
+.dev.vars*
+wrangler.local.jsonc

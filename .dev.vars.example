@@ -1,0 +1,17 @@
+# Local development and command registration. Never commit .dev.vars.
+DISCORD_TOKEN=
+DISCORD_APPLICATION_ID=
+DISCORD_PUBLIC_KEY=
+DISCORD_GUILD_ID=
+ALLOWED_GUILD_IDS=
+ALLOWED_USER_IDS=
+ALLOW_SERVER_ADMINS=true
+
+# Generate with: node scripts/setup-encryption.js
+STUDIO_ENCRYPTION_KEY=
+
+# Optional migration from an older single-game installation.
+# New installations connect Roblox keys through /panel instead.
+ROBLOX_API_KEY=
+ALLOWED_UNIVERSE_IDS=
+UNIVERSE_ROOT_PLACES={}
